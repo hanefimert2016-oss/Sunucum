@@ -1,4 +1,4 @@
-name: Build Remotion + OpenMontage Skill
+name: Render Neon Pulse Animation
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
       - ".github/workflows/remotion-openmontage.yml"
 
 jobs:
-  install:
+  render:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,34 +29,34 @@ jobs:
           npx remotion versions
           npx tsc --noEmit
 
-      - name: Pack installed Remotion project
+      - name: Generate cinematic soundtrack
+        working-directory: remotion-video
         run: |
-          tar -czf remotion-installed.tar.gz remotion-video
-          ls -lh remotion-installed.tar.gz
+          mkdir -p public out
+          ffmpeg -hide_banner -y             -f lavfi -i "sine=frequency=55:duration=20:sample_rate=48000"             -f lavfi -i "sine=frequency=110:duration=20:sample_rate=48000"             -f lavfi -i "sine=frequency=440:duration=20:sample_rate=48000"             -f lavfi -i "anoisesrc=color=pink:duration=20:sample_rate=48000"             -filter_complex "[0:a]volume=0.20,tremolo=f=2:d=0.55[a0];[1:a]volume=0.07,tremolo=f=0.5:d=0.25[a1];[2:a]volume=0.025,highpass=f=250,lowpass=f=1800,tremolo=f=4:d=0.7[a2];[3:a]volume=0.014,highpass=f=2500[a3];[a0][a1][a2][a3]amix=inputs=4:normalize=0,afade=t=in:st=0:d=1.2,afade=t=out:st=18:d=2,alimiter=limit=0.85[a]"             -map "[a]" -c:a pcm_s16le public/score.wav
+          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 public/score.wav
 
-      - name: Upload installed Remotion
+      - name: Ensure Remotion browser
+        working-directory: remotion-video
+        run: npx remotion browser ensure
+
+      - name: Render 1080p master
+        working-directory: remotion-video
+        run: |
+          npx remotion render src/index.ts Main out/neon-pulse.mp4             --codec=h264             --crf=18             --concurrency=2
+          npx remotion still src/index.ts Main out/neon-pulse-poster.png --frame=420
+
+      - name: Verify output
+        working-directory: remotion-video
+        run: |
+          ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate -show_entries format=duration,size -of json out/neon-pulse.mp4
+          ls -lh out/neon-pulse.mp4 out/neon-pulse-poster.png
+
+      - name: Upload final animation
         uses: actions/upload-artifact@v4
         with:
-          name: remotion-installed
-          path: remotion-installed.tar.gz
-          compression-level: 0
-
-      - name: Fetch OpenMontage
-        run: |
-          git clone --depth 1 https://github.com/calesthio/OpenMontage.git OpenMontage
-          mkdir -p openmontage-skill/.agents openmontage-skill/.codex
-          cp -a OpenMontage/.agents/skills openmontage-skill/.agents/
-          cp -a OpenMontage/skills openmontage-skill/
-          if [ -d OpenMontage/.codex/prompts ]; then cp -a OpenMontage/.codex/prompts openmontage-skill/.codex/; fi
-          cp OpenMontage/AGENT_GUIDE.md openmontage-skill/
-          cp OpenMontage/PROJECT_CONTEXT.md openmontage-skill/
-          cp OpenMontage/LICENSE openmontage-skill/ 2>/dev/null || true
-          tar -czf openmontage-skill.tar.gz openmontage-skill
-          ls -lh openmontage-skill.tar.gz
-
-      - name: Upload OpenMontage skill bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: openmontage-skill
-          path: openmontage-skill.tar.gz
+          name: neon-pulse-animation
+          path: |
+            remotion-video/out/neon-pulse.mp4
+            remotion-video/out/neon-pulse-poster.png
           compression-level: 0
