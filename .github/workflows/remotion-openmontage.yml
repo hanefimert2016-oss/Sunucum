@@ -1,0 +1,64 @@
+name: Build Remotion + OpenMontage Skill
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "remotion-video/**"
+      - ".github/workflows/remotion-openmontage.yml"
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: remotion-video/package-lock.json
+
+      - name: Install Remotion
+        working-directory: remotion-video
+        run: |
+          npm install --no-audit --no-fund
+          npx remotion versions
+          npx tsc --noEmit
+
+      - name: Pack installed Remotion project
+        run: |
+          tar -czf remotion-installed.tar.gz remotion-video
+          ls -lh remotion-installed.tar.gz
+
+      - name: Upload installed Remotion
+        uses: actions/upload-artifact@v4
+        with:
+          name: remotion-installed
+          path: remotion-installed.tar.gz
+          compression-level: 0
+
+      - name: Fetch OpenMontage
+        run: |
+          git clone --depth 1 https://github.com/calesthio/OpenMontage.git OpenMontage
+          mkdir -p openmontage-skill/.agents openmontage-skill/.codex
+          cp -a OpenMontage/.agents/skills openmontage-skill/.agents/
+          cp -a OpenMontage/skills openmontage-skill/
+          if [ -d OpenMontage/.codex/prompts ]; then cp -a OpenMontage/.codex/prompts openmontage-skill/.codex/; fi
+          cp OpenMontage/AGENT_GUIDE.md openmontage-skill/
+          cp OpenMontage/PROJECT_CONTEXT.md openmontage-skill/
+          cp OpenMontage/LICENSE openmontage-skill/ 2>/dev/null || true
+          tar -czf openmontage-skill.tar.gz openmontage-skill
+          ls -lh openmontage-skill.tar.gz
+
+      - name: Upload OpenMontage skill bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: openmontage-skill
+          path: openmontage-skill.tar.gz
+          compression-level: 0
